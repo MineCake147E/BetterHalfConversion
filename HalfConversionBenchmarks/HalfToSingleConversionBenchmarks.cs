@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -33,7 +34,7 @@ namespace HalfConversionBenchmarks
             var samples = Frames;
             bufferDst = new float[samples];
             bufferA = new Half[samples];
-            bufferA.AsSpan().Fill((Half)1.5f);
+            RandomNumberGenerator.Fill(MemoryMarshal.AsBytes(bufferA.AsSpan()));
         }
 
         [Benchmark]
@@ -144,7 +145,6 @@ namespace HalfConversionBenchmarks
 
         [Benchmark]
         public void UnrolledLoopVectorizedAvx2() => HalfUtils.ConvertHalfToSingleMany(bufferDst.AsSpan(), bufferA.AsSpan());
-
 
     }
 }
