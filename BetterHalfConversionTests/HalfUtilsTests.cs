@@ -16,9 +16,8 @@ using NUnit.Framework;
 namespace BetterHalfConversionTests
 {
     [TestFixture]
-    public class BetterHalfToSingleConversionTests
+    public class HalfUtilsTests
     {
-
         [Test]
         public void ConvertHalfToSingleConvertsAllValuesCorrectly()
         {
@@ -27,7 +26,7 @@ namespace BetterHalfConversionTests
                 var h = BitConverter.UInt16BitsToHalf((ushort)i);
                 var exp = (float)h;
                 var act = HalfUtils.ConvertHalfToSingle(h);
-                Assert.AreEqual(exp, act, $"Evaluating {i}th value:");
+                Assert.AreEqual(BitConverter.SingleToUInt32Bits(exp), BitConverter.SingleToUInt32Bits(act), $"Evaluating {i}th value({h}):");
             }
         }
         [Test]
@@ -38,7 +37,7 @@ namespace BetterHalfConversionTests
                 var h = BitConverter.UInt16BitsToHalf((ushort)i);
                 var exp = (float)h;
                 var act = HalfUtils.ConvertHalfToSingle2(h);
-                Assert.AreEqual(exp, act, $"Evaluating {i}th value:");
+                Assert.AreEqual(BitConverter.SingleToUInt32Bits(exp), BitConverter.SingleToUInt32Bits(act), $"Evaluating {i}th value({h}):");
             }
         }
         [Test]

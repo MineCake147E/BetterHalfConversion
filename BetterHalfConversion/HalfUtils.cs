@@ -11,7 +11,6 @@ namespace BetterHalfToSingleConversion
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static float ConvertHalfToSingle(Half value)
         {
-            //Scalar-friendly variant
             var h = BitConverter.HalfToInt16Bits(value);
             var v = (uint)(int)h;
             var b = (v & 0x7c00u) == 0x7c00u;
@@ -26,7 +25,6 @@ namespace BetterHalfToSingleConversion
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static float ConvertHalfToSingle2(Half value)
         {
-            //Vector-friendly variant
             var h = BitConverter.HalfToInt16Bits(value);
             var v = (uint)(int)h;
             var e = v & 0x7c00u;
