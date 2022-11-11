@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -174,6 +175,15 @@ namespace HalfConversionBenchmarks
             {
                 Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf3(Unsafe.Add(ref rsi, i));
             }
+        }
+        [Benchmark]
+        public void VectorizedLoopAvx2()
+        {
+            if (!Avx2.IsSupported)
+            {
+                throw new NotSupportedException("Avx2 is not supported!");
+            }
+            HalfUtils.ConvertSingleToHalfManyAvx2(bufferDst, bufferSrc);
         }
     }
 }
