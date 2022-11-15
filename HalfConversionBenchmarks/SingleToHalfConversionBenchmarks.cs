@@ -9,18 +9,34 @@ using System.Text;
 using System.Threading.Tasks;
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 
 using BetterHalfToSingleConversion;
 
 namespace HalfConversionBenchmarks
 {
+    [CategoriesColumn]
     [SimpleJob(runtimeMoniker: RuntimeMoniker.HostProcess)]
+    [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByParams, BenchmarkLogicalGroupRule.ByCategory)]
     [DisassemblyDiagnoser(maxDepth: int.MaxValue)]
+    [AnyCategoriesFilter(CategoryStandard)]
     public class SingleToHalfConversionBenchmarks
     {
-        [Params(65535)]
+        [Params(65536)]
         public int Frames { get; set; }
+
+        [Params(InputValueType.Sequential, InputValueType.Permuted)]
+        public InputValueType InputValue { get; set; }
+
+        private const string CategorySimple = "Simple";
+        private const string CategoryUnrolled = "Unrolled";
+        private const string CategoryVectorized = "Vectorized";
+        private const string CategoryStandard = "Standard";
+        private const string CategoryNew = "New";
+        private const string CategoryNew2 = "New2";
+        private const string CategoryNew3 = "New3";
+        private const string CategoryAvx2 = "Avx2";
 
         private float[] bufferSrc;
         private Half[] bufferDst;
@@ -29,11 +45,64 @@ namespace HalfConversionBenchmarks
         public void Setup()
         {
             var samples = Frames;
-            bufferSrc = new float[samples];
+            var vS = bufferSrc = new float[samples];
             bufferDst = new Half[samples];
-            RandomNumberGenerator.Fill(MemoryMarshal.AsBytes(bufferSrc.AsSpan()));
+            var vspan = vS.AsSpan();
+            switch (InputValue)
+            {
+                case InputValueType.Permuted:
+                    FillSequential(vspan);
+                    //Random Permutation
+                    ref var x9 = ref MemoryMarshal.GetReference(vspan);
+                    var length = vspan.Length;
+                    var olen = length - 2;
+                    for (var i = 0; i < olen; i++)
+                    {
+                        //Using RandomNumberGenerator in order to prevent predictability
+                        var x = RandomNumberGenerator.GetInt32(i, length);
+                        (Unsafe.Add(ref x9, x), Unsafe.Add(ref x9, i)) = (Unsafe.Add(ref x9, i), Unsafe.Add(ref x9, x));
+                    }
+                    break;
+                case InputValueType.RandomUniform:
+                    RandomNumberGenerator.Fill(MemoryMarshal.AsBytes(vspan));
+                    break;
+                case InputValueType.RandomSubnormal:
+                    for (var i = 0; i < vspan.Length; i++)
+                    {
+                        var r = (uint)RandomNumberGenerator.GetInt32(0x70FF_BFFE);
+                        vspan[i] = BitConverter.UInt32BitsToSingle(uint.RotateRight(r, 1));
+                    }
+                    break;
+                case InputValueType.RandomNormal:
+                    for (var i = 0; i < vspan.Length; i++)
+                    {
+                        var r = (uint)RandomNumberGenerator.GetInt32(0x1E00_1FFE);
+                        vspan[i] = BitConverter.UInt32BitsToSingle(uint.RotateRight(r, 1) + 947904512u);
+                    }
+                    break;
+                case InputValueType.RandomInfNaN:
+                    RandomNumberGenerator.Fill(MemoryMarshal.AsBytes(vspan));
+                    for (var i = 0; i < vspan.Length; i++)
+                    {
+                        var r = BitConverter.SingleToUInt32Bits(vspan[i]);
+                        vspan[i] = BitConverter.UInt32BitsToSingle(r | 0x7f80_0000u);
+                    }
+                    break;
+                default:
+                    FillSequential(vspan);
+                    break;
+            }
+
+            static void FillSequential(Span<float> vspan)
+            {
+                for (var i = 0; i < vspan.Length; i++)
+                {
+                    vspan[i] = (float)BitConverter.UInt16BitsToHalf((ushort)i);
+                }
+            }
         }
-        [Benchmark]
+        [BenchmarkCategory(CategorySimple, CategoryStandard)]
+        [Benchmark(Baseline = true)]
         public void SimpleLoopStandard()
         {
             var bA = bufferSrc.AsSpan();
@@ -47,6 +116,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategorySimple, CategoryNew)]
         [Benchmark]
         public void SimpleLoopNew()
         {
@@ -61,6 +131,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategorySimple, CategoryNew2)]
         [Benchmark]
         public void SimpleLoopNew2()
         {
@@ -75,6 +146,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategorySimple, CategoryNew3)]
         [Benchmark]
         public void SimpleLoopNew3()
         {
@@ -88,7 +160,8 @@ namespace HalfConversionBenchmarks
                 Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf3(Unsafe.Add(ref rsi, i));
             }
         }
-
+        #region Unrolled
+        [BenchmarkCategory(CategoryUnrolled, CategoryStandard)]
         [Benchmark]
         public void UnrolledLoopStandard()
         {
@@ -111,6 +184,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew)]
         [Benchmark]
         public void UnrolledLoopNew()
         {
@@ -133,6 +207,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew2)]
         [Benchmark]
         public void UnrolledLoopNew2()
         {
@@ -155,6 +230,7 @@ namespace HalfConversionBenchmarks
             }
         }
 
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew3)]
         [Benchmark]
         public void UnrolledLoopNew3()
         {
@@ -176,6 +252,9 @@ namespace HalfConversionBenchmarks
                 Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf3(Unsafe.Add(ref rsi, i));
             }
         }
+        #endregion
+        #region Vectorized
+        [BenchmarkCategory(CategoryVectorized, CategoryAvx2)]
         [Benchmark]
         public void VectorizedLoopAvx2()
         {
@@ -185,5 +264,6 @@ namespace HalfConversionBenchmarks
             }
             HalfUtils.ConvertSingleToHalfManyAvx2(bufferDst, bufferSrc);
         }
+        #endregion
     }
 }

@@ -8,6 +8,13 @@ namespace BetterHalfToSingleConversion
 {
     public static class HalfUtils
     {
+        private const uint ExponentLowerBound = 0x3880_0000u;
+        private const uint ExponentOffset = 0x3800_0000u;
+        private const uint FloatSignMask = 0x8000_0000u;
+        private const uint FloatExponentMask = 0x7f80_0000u;
+        private const uint RoundingExponentOffset = 0x0680_0000u;
+        private const float MinimumHalfInfinity = 65520.0f;
+        #region HalfToSingle
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static float ConvertHalfToSingle(Half value)
         {
@@ -22,6 +29,7 @@ namespace BetterHalfToSingleConversion
             d += j;
             return (float)BitConverter.UInt64BitsToDouble(d);
         }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static float ConvertHalfToSingle2(Half value)
         {
@@ -32,25 +40,110 @@ namespace BetterHalfToSingleConversion
             var hc = (uint)-Unsafe.As<bool, byte>(ref c);
             var b = e == 0x7c00u;
             var hb = (uint)-Unsafe.As<bool, byte>(ref b);
-            var n = hc & 0x3880_0000u;
-            var j = 0x3800_0000u | n;
+            var n = hc & ExponentLowerBound;
+            var j = ExponentOffset | n;
             v <<= 13;
             j += j & hb;
-            var s = v & 0x8000_0000u;
+            var s = v & FloatSignMask;
             v &= 0x0FFF_E000;
             v += j;
             var k = BitConverter.SingleToUInt32Bits(BitConverter.UInt32BitsToSingle(v) - BitConverter.UInt32BitsToSingle(n));
             return BitConverter.UInt32BitsToSingle(k | s);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static float ConvertHalfToSingle3(Half value)
+        {
+            var h = BitConverter.HalfToInt16Bits(value);
+            var v = (uint)(int)h;
+            var e = v & 0x7c00u;
+            var c = e == 0u;
+            var hc = (uint)-Unsafe.As<bool, byte>(ref c);
+            var b = e == 0x7c00u;
+            var hb = (uint)-Unsafe.As<bool, byte>(ref b);
+            var n = hc & ExponentLowerBound;
+            var j = ExponentOffset | n;
+            v <<= 13;
+            j += j & hb;
+            var s = v & FloatSignMask;
+            v &= 0x0FFF_E000;
+            v += j;
+            var k = BitConverter.SingleToUInt32Bits(BitConverter.UInt32BitsToSingle(v) - BitConverter.UInt32BitsToSingle(n));
+            return BitConverter.UInt32BitsToSingle(k | s);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static void ConvertHalfToSingleMany(Span<float> destination, ReadOnlySpan<Half> source)
+        {
+            if (!Avx2.IsSupported)
+            {
+                throw new NotSupportedException("Avx2 is not supported in this machine!");
+            }
+            //Vectorized based on Vector-friendly variant
+            ref var rsi = ref MemoryMarshal.GetReference(source);
+            ref var rdi = ref MemoryMarshal.GetReference(destination);
+            nint i = 0, length = Math.Min(source.Length, destination.Length);
+            var ymm15 = Vector256.Create(0x0000_7c00u);
+            var ymm14 = Vector256.Create(ExponentLowerBound);
+            var ymm13 = Vector256.Create(ExponentOffset);
+            var ymm12 = Vector256.Create(FloatSignMask);
+            var ymm11 = Vector256.Create(0x0FFF_E000u);
+            var ymm10 = Vector256<uint>.Zero;
+            var olen = length - 15;
+            for (; i < olen; i += 16)
+            {
+                ref var r8 = ref Unsafe.Add(ref rdi, i);
+                var xmm0 = Unsafe.As<Half, Vector128<short>>(ref Unsafe.Add(ref rsi, i + 0));
+                var xmm1 = Unsafe.As<Half, Vector128<short>>(ref Unsafe.Add(ref rsi, i + 8));
+                var ymm0 = Avx2.ConvertToVector256Int32(xmm0).AsUInt32();
+                var ymm1 = Avx2.ConvertToVector256Int32(xmm1).AsUInt32();
+                var ymm2 = Avx2.And(ymm15, ymm0);
+                var ymm3 = Avx2.And(ymm15, ymm1);
+                var ymm4 = Avx2.CompareEqual(ymm10, ymm2);
+                var ymm5 = Avx2.CompareEqual(ymm10, ymm3);
+                ymm4 = Avx2.And(ymm14, ymm4);
+                ymm5 = Avx2.And(ymm14, ymm5);
+                ymm2 = Avx2.CompareEqual(ymm15, ymm2);
+                ymm3 = Avx2.CompareEqual(ymm15, ymm3);
+                ymm2 = Avx2.And(ymm13, ymm2);
+                ymm3 = Avx2.And(ymm13, ymm3);
+                var ymm6 = Avx2.Or(ymm13, ymm4);
+                var ymm7 = Avx2.Or(ymm13, ymm5);
+                ymm0 = Avx2.ShiftLeftLogical(ymm0, 13);
+                ymm1 = Avx2.ShiftLeftLogical(ymm1, 13);
+                ymm2 = Avx2.Add(ymm2, ymm6);
+                ymm3 = Avx2.Add(ymm3, ymm7);
+                ymm6 = Avx2.And(ymm12, ymm0);
+                ymm7 = Avx2.And(ymm12, ymm1);
+                ymm0 = Avx2.And(ymm11, ymm0);
+                ymm1 = Avx2.And(ymm11, ymm1);
+                ymm0 = Avx2.Add(ymm0, ymm2);
+                ymm0 = Avx.Subtract(ymm0.AsSingle(), ymm4.AsSingle()).AsUInt32();
+                ymm1 = Avx2.Add(ymm1, ymm3);
+                ymm1 = Avx.Subtract(ymm1.AsSingle(), ymm5.AsSingle()).AsUInt32();
+                ymm0 = Avx2.Or(ymm0, ymm6);
+                ymm1 = Avx2.Or(ymm1, ymm7);
+                Unsafe.As<float, Vector256<uint>>(ref Unsafe.Add(ref r8, 0)) = ymm0;
+                Unsafe.As<float, Vector256<uint>>(ref Unsafe.Add(ref r8, 8)) = ymm1;
+
+            }
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = ConvertHalfToSingle(Unsafe.Add(ref rsi, i));
+            }
+        }
+        #endregion
+        #region SingleToHalf
+
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static Half ConvertSingleToHalf(float value)
         {
             var v = BitConverter.SingleToUInt32Bits(value);
-            var s = v & 0x8000_0000u;
-            v &= ~0x8000_0000u;
-            value = Vector128.Min(Vector128.CreateScalarUnsafe(65520.0f), Vector128.CreateScalarUnsafe(v).AsSingle()).GetElement(0);
+            var s = v & FloatSignMask;
+            v &= ~FloatSignMask;
+            value = Vector128.Min(Vector128.CreateScalarUnsafe(MinimumHalfInfinity), Vector128.CreateScalarUnsafe(v).AsSingle()).GetElement(0);
             var dvalue = (double)value;
-            var m = v < 0x3880_0000u;
+            var m = v < ExponentLowerBound;
             var dhm = (ulong)-Unsafe.As<bool, sbyte>(ref m);
             var hm = (uint)dhm;
             var dvm = BitConverter.UInt64BitsToDouble(dhm & 0x3F10_0000_0000_0000u);
@@ -63,7 +156,7 @@ namespace BetterHalfToSingleConversion
             dvalue -= dvm;
             v = BitConverter.SingleToUInt32Bits((float)dvalue);
             var vm = BitConverter.UInt32BitsToSingle(hm);
-            v -= 0x3800_0000u;
+            v -= ExponentOffset;
             v = BitConverter.SingleToUInt32Bits(BitConverter.UInt32BitsToSingle(v) - vm);
             s >>>= 16;
             /*m = (v & 0xfff) > 0;
@@ -85,11 +178,11 @@ namespace BetterHalfToSingleConversion
         public static Half ConvertSingleToHalf2(float value)
         {
             var v = BitConverter.SingleToUInt32Bits(value);
-            var s = v & 0x8000_0000u;
-            v &= ~0x8000_0000u;
-            value = Vector128.Min(Vector128.CreateScalarUnsafe(65520.0f), Vector128.CreateScalarUnsafe(v).AsSingle()).GetElement(0);
+            var s = v & FloatSignMask;
+            v &= ~FloatSignMask;
+            value = Vector128.Min(Vector128.CreateScalarUnsafe(MinimumHalfInfinity), Vector128.CreateScalarUnsafe(v).AsSingle()).GetElement(0);
             var dvalue = (double)value;
-            var m = v < 0x3880_0000u;
+            var m = v < ExponentLowerBound;
             var dhm = (ulong)-Unsafe.As<bool, sbyte>(ref m);
             var hm = dhm;
             var dvm = BitConverter.UInt64BitsToDouble(dhm & 0x3F10_0000_0000_0000u);
@@ -119,36 +212,171 @@ namespace BetterHalfToSingleConversion
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static Half ConvertSingleToHalf3(float value)
         {
-            var v0 = Vector128.CreateScalarUnsafe(0x3880_0000u);
-            var v1 = Vector128.CreateScalarUnsafe(0x3800_0000u);
-            var v2 = Vector128.CreateScalarUnsafe(0x8000_0000u);
-            var v3 = Vector128.CreateScalarUnsafe(0x7f80_0000u);
-            var v4 = Vector128.CreateScalarUnsafe(0x0680_0000u);
-            var v5 = Vector128.CreateScalarUnsafe(65520.0f);
-            var v = BitConverter.SingleToUInt32Bits(value);
-            var vval = Vector128.CreateScalarUnsafe(value);
-            vval = Vector128.AndNot(vval.AsUInt32(), v2).AsSingle();
-            var s = v & 0x8000_0000u;
-            vval = Vector128.Min(v5, vval);
-            var w = Vector128.Equals(vval, vval).AsUInt32();
-            var y = Vector128.Max(v0, vval.AsUInt32());
-            y = Vector128.BitwiseAnd(y, v3);
-            y = Vector128.Add(y, v4);
-            var z = Vector128.Subtract(y, v1);
-            z = Vector128.BitwiseAnd(z, w);
-            vval = Vector128.Add(vval, y.AsSingle());
-            vval = Vector128.Subtract(vval.AsUInt32(), v1).AsSingle();
-            vval = Vector128.Subtract(vval, z.AsSingle());
-            v = vval.AsUInt32().GetElement(0) >> 13;
-            s >>>= 16;
-            var hc = ~w.GetElement(0) & 0x7C00u;
-            v &= 0x7fffu;
+            var exponentLowerBound = Vector128.CreateScalarUnsafe(ExponentLowerBound);
+            var exponentOffset = Vector128.CreateScalarUnsafe(ExponentOffset);
+            var floatSignMask = Vector128.CreateScalarUnsafe(FloatSignMask);
+            var floatExponentMask = Vector128.CreateScalarUnsafe(FloatExponentMask);
+            var roundingExponentOffset = Vector128.CreateScalarUnsafe(RoundingExponentOffset);
+            var minValueInfinityInHalf = Vector128.CreateScalarUnsafe(MinimumHalfInfinity);
+            var x0 = BitConverter.SingleToUInt32Bits(value);
+            var s0 = Vector128.CreateScalarUnsafe(value);
+            s0 = Vector128.AndNot(s0.AsUInt32(), floatSignMask).AsSingle();
+            var sign = x0 & FloatSignMask;
+            s0 = Vector128.Min(minValueInfinityInHalf, s0);
+            var s1 = Vector128.Max(exponentLowerBound, s0.AsUInt32());
+            var isNaN = Vector128.Equals(s0, s0).AsUInt32();
+            s1 = Vector128.BitwiseAnd(s1, floatExponentMask);
+            s1 = Vector128.Add(s1, roundingExponentOffset);
+            var s2 = Vector128.Subtract(s1, exponentOffset);
+            s2 = Vector128.BitwiseAnd(s2, isNaN);
+            s0 = Vector128.Add(s0, s1.AsSingle());
+            s0 = Vector128.Subtract(s0.AsUInt32(), exponentOffset).AsSingle();
+            s0 = Vector128.Subtract(s0, s2.AsSingle());
+            x0 = s0.AsUInt32().GetElement(0) >> 13;
+            sign >>>= 16;
+            var hc = ~isNaN.GetElement(0) & 0x7C00u;
+            x0 &= 0x7fffu;
             var gc = hc;
-            gc |= s;
-            v &= ~hc;
-            v |= gc;
-            return BitConverter.UInt16BitsToHalf((ushort)v);
+            gc |= sign;
+            x0 &= ~hc;
+            x0 |= gc;
+            return BitConverter.UInt16BitsToHalf((ushort)x0);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static Half ConvertSingleToHalf4(float value)
+        {
+            if (Sse41.IsSupported)
+            {
+                var v0 = Vector128.CreateScalarUnsafe(ExponentLowerBound);
+                var v1 = Vector128.CreateScalarUnsafe(ExponentOffset);
+                var v2 = Vector128.CreateScalarUnsafe(FloatSignMask);
+                var v3 = Vector128.CreateScalarUnsafe(FloatExponentMask);
+                var v4 = Vector128.CreateScalarUnsafe(RoundingExponentOffset);
+                var v5 = Vector128.CreateScalarUnsafe(MinimumHalfInfinity);
+                var vval = Vector128.CreateScalarUnsafe(value);
+                var v = BitConverter.SingleToUInt32Bits(value);
+                vval = Sse.AndNot(v2.AsSingle(), vval);
+                var sign = v & FloatSignMask;
+                vval = Sse.MinScalar(v5, vval);
+                var isNaN = Sse.CompareEqual(vval, vval).AsUInt32();
+                var y = Sse41.Max(vval.AsUInt32(), v0);
+                y = Sse2.And(y, v3);
+                y = Sse2.Add(y, v4);
+                var z = Sse2.Subtract(y, v1);
+                z = Sse2.And(z, isNaN);
+                vval = Sse.AddScalar(vval, y.AsSingle());
+                vval = Sse2.Subtract(vval.AsUInt32(), v1).AsSingle();
+                vval = Sse.SubtractScalar(vval, z.AsSingle());
+                v = vval.AsUInt32().GetElement(0) >> 13;
+                sign >>>= 16;
+                var hc = ~isNaN.GetElement(0) & 0x7C00u;
+                v &= 0x7fffu;
+                var gc = hc;
+                gc |= sign;
+                v &= ~hc;
+                v |= gc;
+                return BitConverter.UInt16BitsToHalf((ushort)v);
+            }
+            if (Sse2.IsSupported)
+            {
+                var v0 = Vector128.CreateScalarUnsafe(ExponentLowerBound);
+                var v1 = Vector128.CreateScalarUnsafe(ExponentOffset);
+                var v2 = Vector128.CreateScalarUnsafe(FloatSignMask);
+                var v3 = Vector128.CreateScalarUnsafe(FloatExponentMask);
+                var v4 = Vector128.CreateScalarUnsafe(RoundingExponentOffset);
+                var v5 = Vector128.CreateScalarUnsafe(MinimumHalfInfinity);
+                var vval = Vector128.CreateScalarUnsafe(value);
+                var v = BitConverter.SingleToUInt32Bits(value);
+                vval = Sse.AndNot(v2.AsSingle(), vval);
+                var sign = v & FloatSignMask;
+                vval = Sse.MinScalar(v5, vval);
+                var isNaN = Sse.CompareEqual(vval, vval).AsUInt32();
+                var y = Sse.MaxScalar(vval, v0.AsSingle()).AsUInt32();
+                y = Sse2.And(y, v3);
+                y = Sse2.Add(y, v4);
+                var z = Sse2.Subtract(y, v1);
+                z = Sse2.And(z, isNaN);
+                vval = Sse.AddScalar(vval, y.AsSingle());
+                vval = Sse2.Subtract(vval.AsUInt32(), v1).AsSingle();
+                vval = Sse.SubtractScalar(vval, z.AsSingle());
+                v = vval.AsUInt32().GetElement(0) >> 13;
+                sign >>>= 16;
+                var hc = ~isNaN.GetElement(0) & 0x7C00u;
+                v &= 0x7fffu;
+                var gc = hc;
+                gc |= sign;
+                v &= ~hc;
+                v |= gc;
+                return BitConverter.UInt16BitsToHalf((ushort)v);
+            }
+            if (Vector64.IsHardwareAccelerated)
+            {
+                var v0 = Vector64.CreateScalarUnsafe(ExponentLowerBound);
+                var v1 = Vector64.CreateScalarUnsafe(ExponentOffset);
+                var v2 = Vector64.CreateScalarUnsafe(FloatSignMask);
+                var v3 = Vector64.CreateScalarUnsafe(FloatExponentMask);
+                var v4 = Vector64.CreateScalarUnsafe(RoundingExponentOffset);
+                var v5 = Vector64.CreateScalarUnsafe(MinimumHalfInfinity);
+                var x0 = BitConverter.SingleToUInt32Bits(value);
+                var s0 = Vector64.CreateScalarUnsafe(value);
+                s0 = Vector64.AndNot(s0.AsUInt32(), v2).AsSingle();
+                var sign = x0 & FloatSignMask;
+                s0 = Vector64.Min(v5, s0);
+                var s1 = Vector64.Max(v0, s0.AsUInt32());
+                var isNaN = Vector64.Equals(s0, s0).AsUInt32();
+                s1 = Vector64.BitwiseAnd(s1, v3);
+                s1 = Vector64.Add(s1, v4);
+                var s2 = Vector64.Subtract(s1, v1);
+                s2 = Vector64.BitwiseAnd(s2, isNaN);
+                s0 = Vector64.Add(s0, s1.AsSingle());
+                s0 = Vector64.Subtract(s0.AsUInt32(), v1).AsSingle();
+                s0 = Vector64.Subtract(s0, s2.AsSingle());
+                x0 = s0.AsUInt32().GetElement(0) >> 13;
+                sign >>>= 16;
+                var hc = ~isNaN.GetElement(0) & 0x7C00u;
+                x0 &= 0x7fffu;
+                var gc = hc;
+                gc |= sign;
+                x0 &= ~hc;
+                x0 |= gc;
+                return BitConverter.UInt16BitsToHalf((ushort)x0);
+            }
+            if (Vector128.IsHardwareAccelerated)
+            {
+                var v0 = Vector128.CreateScalarUnsafe(ExponentLowerBound);
+                var v1 = Vector128.CreateScalarUnsafe(ExponentOffset);
+                var v2 = Vector128.CreateScalarUnsafe(FloatSignMask);
+                var v3 = Vector128.CreateScalarUnsafe(FloatExponentMask);
+                var v4 = Vector128.CreateScalarUnsafe(RoundingExponentOffset);
+                var v5 = Vector128.CreateScalarUnsafe(MinimumHalfInfinity);
+                var x0 = BitConverter.SingleToUInt32Bits(value);
+                var s0 = Vector128.CreateScalarUnsafe(value);
+                s0 = Vector128.AndNot(s0.AsUInt32(), v2).AsSingle();
+                var sign = x0 & FloatSignMask;
+                s0 = Vector128.Min(v5, s0);
+                var s1 = Vector128.Max(v0, s0.AsUInt32());
+                var isNaN = Vector128.Equals(s0, s0).AsUInt32();
+                s1 = Vector128.BitwiseAnd(s1, v3);
+                s1 = Vector128.Add(s1, v4);
+                var s2 = Vector128.Subtract(s1, v1);
+                s2 = Vector128.BitwiseAnd(s2, isNaN);
+                s0 = Vector128.Add(s0, s1.AsSingle());
+                s0 = Vector128.Subtract(s0.AsUInt32(), v1).AsSingle();
+                s0 = Vector128.Subtract(s0, s2.AsSingle());
+                x0 = s0.AsUInt32().GetElement(0) >> 13;
+                sign >>>= 16;
+                var hc = ~isNaN.GetElement(0) & 0x7C00u;
+                x0 &= 0x7fffu;
+                var gc = hc;
+                gc |= sign;
+                x0 &= ~hc;
+                x0 |= gc;
+                return BitConverter.UInt16BitsToHalf((ushort)x0);
+            }
+            return (Half)value;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static void ConvertSingleToHalfManyAvx2(Span<Half> destination, ReadOnlySpan<float> source)
         {
@@ -160,12 +388,12 @@ namespace BetterHalfToSingleConversion
             ref var rsi = ref MemoryMarshal.GetReference(source);
             ref var rdi = ref MemoryMarshal.GetReference(destination);
             nint i = 0, length = Math.Min(source.Length, destination.Length);
-            var ymm15 = Vector256.Create(0x3880_0000u);
-            var ymm14 = Vector256.Create(0x3800_0000u);
-            var ymm13 = Vector256.Create(0x8000_0000u);
-            var ymm12 = Vector256.Create(0x7f80_0000u);
-            var ymm11 = Vector256.Create(0x0680_0000u);
-            var ymm10 = Vector256.Create(65520.0f);
+            var ymm15 = Vector256.Create(ExponentLowerBound);
+            var ymm14 = Vector256.Create(ExponentOffset);
+            var ymm13 = Vector256.Create(FloatSignMask);
+            var ymm12 = Vector256.Create(FloatExponentMask);
+            var ymm11 = Vector256.Create(RoundingExponentOffset);
+            var ymm10 = Vector256.Create(MinimumHalfInfinity);
             var x9 = BitConverter.HalfToUInt16Bits(Half.PositiveInfinity);
             var x10 = 0x7fffu;
             var olen = length - 15;
@@ -220,7 +448,7 @@ namespace BetterHalfToSingleConversion
                 var v = BitConverter.SingleToUInt32Bits(value);
                 var vval = Vector128.CreateScalarUnsafe(value);
                 vval = Vector128.AndNot(vval, ymm13.GetLower().AsSingle());
-                var s = v & 0x8000_0000u;
+                var s = v & FloatSignMask;
                 vval = Vector128.Min(ymm10.GetLower(), vval);
                 var w = Vector128.Equals(vval, vval);
                 var y = Vector128.Max(ymm15.GetLower(), vval.AsUInt32());
@@ -243,65 +471,6 @@ namespace BetterHalfToSingleConversion
                 Unsafe.Add(ref rdi, i) = BitConverter.UInt16BitsToHalf((ushort)v);
             }
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        public static void ConvertHalfToSingleMany(Span<float> destination, ReadOnlySpan<Half> source)
-        {
-            if (!Avx2.IsSupported)
-            {
-                throw new NotSupportedException("Avx2 is not supported in this machine!");
-            }
-            //Vectorized based on Vector-friendly variant
-            ref var rsi = ref MemoryMarshal.GetReference(source);
-            ref var rdi = ref MemoryMarshal.GetReference(destination);
-            nint i = 0, length = Math.Min(source.Length, destination.Length);
-            var ymm15 = Vector256.Create(0x0000_7c00u);
-            var ymm14 = Vector256.Create(0x3880_0000u);
-            var ymm13 = Vector256.Create(0x3800_0000u);
-            var ymm12 = Vector256.Create(0x8000_0000u);
-            var ymm11 = Vector256.Create(0x0FFF_E000u);
-            var ymm10 = Vector256<uint>.Zero;
-            var olen = length - 15;
-            for (; i < olen; i += 16)
-            {
-                ref var r8 = ref Unsafe.Add(ref rdi, i);
-                var xmm0 = Unsafe.As<Half, Vector128<short>>(ref Unsafe.Add(ref rsi, i + 0));
-                var xmm1 = Unsafe.As<Half, Vector128<short>>(ref Unsafe.Add(ref rsi, i + 8));
-                var ymm0 = Avx2.ConvertToVector256Int32(xmm0).AsUInt32();
-                var ymm1 = Avx2.ConvertToVector256Int32(xmm1).AsUInt32();
-                var ymm2 = Avx2.And(ymm15, ymm0);
-                var ymm3 = Avx2.And(ymm15, ymm1);
-                var ymm4 = Avx2.CompareEqual(ymm10, ymm2);
-                var ymm5 = Avx2.CompareEqual(ymm10, ymm3);
-                ymm4 = Avx2.And(ymm14, ymm4);
-                ymm5 = Avx2.And(ymm14, ymm5);
-                ymm2 = Avx2.CompareEqual(ymm15, ymm2);
-                ymm3 = Avx2.CompareEqual(ymm15, ymm3);
-                ymm2 = Avx2.And(ymm13, ymm2);
-                ymm3 = Avx2.And(ymm13, ymm3);
-                var ymm6 = Avx2.Or(ymm13, ymm4);
-                var ymm7 = Avx2.Or(ymm13, ymm5);
-                ymm0 = Avx2.ShiftLeftLogical(ymm0, 13);
-                ymm1 = Avx2.ShiftLeftLogical(ymm1, 13);
-                ymm2 = Avx2.Add(ymm2, ymm6);
-                ymm3 = Avx2.Add(ymm3, ymm7);
-                ymm6 = Avx2.And(ymm12, ymm0);
-                ymm7 = Avx2.And(ymm12, ymm1);
-                ymm0 = Avx2.And(ymm11, ymm0);
-                ymm1 = Avx2.And(ymm11, ymm1);
-                ymm0 = Avx2.Add(ymm0, ymm2);
-                ymm0 = Avx.Subtract(ymm0.AsSingle(), ymm4.AsSingle()).AsUInt32();
-                ymm1 = Avx2.Add(ymm1, ymm3);
-                ymm1 = Avx.Subtract(ymm1.AsSingle(), ymm5.AsSingle()).AsUInt32();
-                ymm0 = Avx2.Or(ymm0, ymm6);
-                ymm1 = Avx2.Or(ymm1, ymm7);
-                Unsafe.As<float, Vector256<uint>>(ref Unsafe.Add(ref r8, 0)) = ymm0;
-                Unsafe.As<float, Vector256<uint>>(ref Unsafe.Add(ref r8, 8)) = ymm1;
-
-            }
-            for (; i < length; i++)
-            {
-                Unsafe.Add(ref rdi, i) = ConvertHalfToSingle(Unsafe.Add(ref rsi, i));
-            }
-        }
+        #endregion
     }
 }

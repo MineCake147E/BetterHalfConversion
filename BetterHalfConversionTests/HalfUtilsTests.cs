@@ -66,8 +66,14 @@ namespace BetterHalfConversionTests
         public void ConvertSingleToHalf3ConvertsAllValuesCorrectly() => TestAllValues(HalfUtils.ConvertSingleToHalf3);
 
         [Test]
+        public void ConvertSingleToHalf4ConvertsAllValuesCorrectly() => TestAllValues(HalfUtils.ConvertSingleToHalf4);
+
+        [Test]
         public void ConvertSingleToHalfManyAvx2ConvertsAllValuesCorrectly()
         {
+            Console.WriteLine($"{nameof(Vector64.IsHardwareAccelerated)}: {Vector64.IsHardwareAccelerated}");
+            Console.WriteLine($"{nameof(Vector128.IsHardwareAccelerated)}: {Vector128.IsHardwareAccelerated}");
+            Console.WriteLine($"{nameof(Vector256.IsHardwareAccelerated)}: {Vector256.IsHardwareAccelerated}");
             const int MaxLength = 4096;
             const int TestRange = 16777216;
             const uint Threads = (uint)(0x1_0000_0000L / TestRange);
