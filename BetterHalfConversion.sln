@@ -16,6 +16,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ソリューション項目
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterHalfConversionTests.Android", "BetterHalfConversionTests.Android\BetterHalfConversionTests.Android.csproj", "{B8A96D2D-2483-40D8-9801-35D34AFF6482}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterHalfConversion.TestsForAndroid", "BetterHalfConversion.TestsForAndroid\BetterHalfConversion.TestsForAndroid.csproj", "{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +42,18 @@ Global
 		{D90ABDF6-22DC-462D-9415-CE09A624E46B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D90ABDF6-22DC-462D-9415-CE09A624E46B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D90ABDF6-22DC-462D-9415-CE09A624E46B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8A96D2D-2483-40D8-9801-35D34AFF6482}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C9EF7CE3-48D3-4DB0-B258-06190F6A2EDA}.Release|Any CPU.Deploy.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -20,13 +20,13 @@ namespace HalfConversionBenchmarks
     [SimpleJob(runtimeMoniker: RuntimeMoniker.HostProcess)]
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByParams, BenchmarkLogicalGroupRule.ByCategory)]
     [DisassemblyDiagnoser(maxDepth: int.MaxValue)]
-    [AnyCategoriesFilter(CategoryStandard)]
+    [AnyCategoriesFilter(CategoryNew4, CategoryNew3)]
     public class SingleToHalfConversionBenchmarks
     {
         [Params(65536)]
         public int Frames { get; set; }
 
-        [Params(InputValueType.Sequential, InputValueType.Permuted)]
+        [Params(InputValueType.Permuted)]
         public InputValueType InputValue { get; set; }
 
         private const string CategorySimple = "Simple";
@@ -36,6 +36,10 @@ namespace HalfConversionBenchmarks
         private const string CategoryNew = "New";
         private const string CategoryNew2 = "New2";
         private const string CategoryNew3 = "New3";
+        private const string CategoryNew4 = "New4";
+        private const string CategoryAggressiveInlining = "AggressiveInlining";
+        private const string CategoryInliningUnspecified = "InliningUnspecified";
+        private const string CategoryNoInlining = "NoInlining";
         private const string CategoryAvx2 = "Avx2";
 
         private float[] bufferSrc;
@@ -160,6 +164,51 @@ namespace HalfConversionBenchmarks
                 Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf3(Unsafe.Add(ref rsi, i));
             }
         }
+
+        [BenchmarkCategory(CategorySimple, CategoryNew4, CategoryAggressiveInlining)]
+        [Benchmark]
+        public void SimpleLoopNew4A()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i));
+            }
+        }
+
+        [BenchmarkCategory(CategorySimple, CategoryNew4, CategoryInliningUnspecified)]
+        [Benchmark]
+        public void SimpleLoopNew4U()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i));
+            }
+        }
+
+        [BenchmarkCategory(CategorySimple, CategoryNew4, CategoryNoInlining)]
+        [Benchmark]
+        public void SimpleLoopNew4N()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i));
+            }
+        }
         #region Unrolled
         [BenchmarkCategory(CategoryUnrolled, CategoryStandard)]
         [Benchmark]
@@ -250,6 +299,75 @@ namespace HalfConversionBenchmarks
             for (; i < length; i++)
             {
                 Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf3(Unsafe.Add(ref rsi, i));
+            }
+        }
+
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew4, CategoryAggressiveInlining)]
+        [Benchmark]
+        public void UnrolledLoopNew4A()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            var olen = length - 3;
+            for (; i < olen; i += 4)
+            {
+                Unsafe.Add(ref rdi, i + 0) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i + 0));
+                Unsafe.Add(ref rdi, i + 1) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i + 1));
+                Unsafe.Add(ref rdi, i + 2) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i + 2));
+                Unsafe.Add(ref rdi, i + 3) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i + 3));
+            }
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4(Unsafe.Add(ref rsi, i));
+            }
+        }
+
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew4, CategoryInliningUnspecified)]
+        [Benchmark]
+        public void UnrolledLoopNew4U()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            var olen = length - 3;
+            for (; i < olen; i += 4)
+            {
+                Unsafe.Add(ref rdi, i + 0) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i + 0));
+                Unsafe.Add(ref rdi, i + 1) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i + 1));
+                Unsafe.Add(ref rdi, i + 2) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i + 2));
+                Unsafe.Add(ref rdi, i + 3) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i + 3));
+            }
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4NoMethodImpl(Unsafe.Add(ref rsi, i));
+            }
+        }
+
+        [BenchmarkCategory(CategoryUnrolled, CategoryNew4, CategoryNoInlining)]
+        [Benchmark]
+        public void UnrolledLoopNew4N()
+        {
+            var bA = bufferSrc.AsSpan();
+            var bD = bufferDst.AsSpan();
+            ref var rsi = ref MemoryMarshal.GetReference(bA);
+            ref var rdi = ref MemoryMarshal.GetReference(bD);
+            nint i = 0, length = Math.Min(bA.Length, bD.Length);
+            var olen = length - 3;
+            for (; i < olen; i += 4)
+            {
+                Unsafe.Add(ref rdi, i + 0) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i + 0));
+                Unsafe.Add(ref rdi, i + 1) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i + 1));
+                Unsafe.Add(ref rdi, i + 2) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i + 2));
+                Unsafe.Add(ref rdi, i + 3) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i + 3));
+            }
+            for (; i < length; i++)
+            {
+                Unsafe.Add(ref rdi, i) = HalfUtils.ConvertSingleToHalf4NoInlining(Unsafe.Add(ref rsi, i));
             }
         }
         #endregion

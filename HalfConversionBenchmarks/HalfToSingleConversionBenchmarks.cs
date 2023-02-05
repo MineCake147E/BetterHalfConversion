@@ -22,7 +22,7 @@ namespace HalfConversionBenchmarks
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByParams, BenchmarkLogicalGroupRule.ByCategory)]
     [SimpleJob(runtimeMoniker: RuntimeMoniker.HostProcess)]
     [DisassemblyDiagnoser(maxDepth: int.MaxValue)]
-    [AnyCategoriesFilter(CategoryStandard)]
+    [AnyCategoriesFilter(CategoryStandard, CategoryNew2)]
     public class HalfToSingleConversionBenchmarks
     {
         private const string CategoryAvx2 = "Avx2";
@@ -39,7 +39,7 @@ namespace HalfConversionBenchmarks
 
         [Params(65536)]
         public int Frames { get; set; }
-        [Params(InputValueType.Sequential, InputValueType.Permuted)]
+        [Params(InputValueType.Permuted)]
         public InputValueType InputValue { get; set; }
         [GlobalSetup]
         public void Setup()
